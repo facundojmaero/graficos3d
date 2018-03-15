@@ -16,6 +16,8 @@ from transform import frustum, perspective, Trackball, identity
 import pyassimp                     # 3D ressource loader
 import pyassimp.errors              # assimp error management + exceptions
 
+from cylinder import generateCylinder
+
 
 # -------------- 3D ressource loader -----------------------------------------
 def load(file):
@@ -50,6 +52,9 @@ class ColorMesh:
 
         self.attributes = attributes
 
+        # print(attributes[0])
+        # print(index)
+
         self.glid = GL.glGenVertexArrays(1)  # create OpenGL vertex array id
         GL.glBindVertexArray(self.glid)      # activate to receive state below
 
@@ -80,8 +85,8 @@ class ColorMesh:
 
         GL.glUseProgram(color_shader.glid)
 
-        # my_color_location = GL.glGetUniformLocation(color_shader.glid, 'color')
-        # GL.glUniform3fv(my_color_location, 1, self.attributes[1])                   # attributes[1] es el color
+        my_color_location = GL.glGetUniformLocation(color_shader.glid, 'color')
+        GL.glUniform3fv(my_color_location, 1, self.attributes[1])                   # attributes[1] es el color
 
         matrix_location = GL.glGetUniformLocation(color_shader.glid, 'matrix')
         mat = projection @ view
@@ -411,57 +416,15 @@ def main():
 
     # viewer.add(VertexArray([position, color], index))
 
-    mesh = load("suzanne.obj")
-    viewer.add(mesh[0])
+    # mesh = load("suzanne.obj")
+    # viewer.add(mesh[0])
 
-    position = np.array((
-        (1.000000, -1.000000, -1.000000),
-        (1.000000, -1.000000, 1.000000),
-        (-1.000000, -1.000000, 1.000000),
-        (-1.000000, -1.000000, -1.000000),
-        (1.000000, 1.000000, -0.999999),
-        (0.999999, 1.000000, 1.000001),
-        (-1.000000, 1.000000, 1.000000),
-        (-1.000000, 1.000000, -1.000000))
-        , np.float32)
+    cylinder = generateCylinder(faces=64)
 
-    index = np.array(
-        (1,1,1, 2,2,1, 3,3,1, 4,4,1,
-        5,4,2, 8,1,2, 7,5,2, 6,3,2,
-        1,2,3, 5,3,3, 6,4,3, 2,1,3,
-        2,4,4, 6,1,4, 7,2,4, 3,3,4,
-        3,1,5, 7,2,5, 8,3,5, 4,4,5,
-        5,3,6, 1,4,6, 4,1,6, 8,2,6), np.uint32)
-    
-    index = index-1
+    vertices = cylinder[0]
+    indices = cylinder[1]
+    viewer.add(ColorMesh([vertices, vertices], indices))
 
-    color = np.array((
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (0.0, 1.0, 0.0),
-            (0.0, 0.0, 1.0),
-            (1.0, 1.0, 0.0),
-            (0.0, 1.0, 1.0),
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0),
-            (1.0, 0.0, 0.0)), np.float32)
-
-    # viewer.add(VertexArray([position, color], index))
 
     # start rendering loop
     viewer.run()
