@@ -14,7 +14,29 @@ import numpy as np                  # all matrix manipulations & OpenGL args
 import pyassimp                     # 3D resource loader
 import pyassimp.errors              # Assimp error management + exceptions
 
-from transform import Trackball, identity
+from transform import Trackball, identity, translate, scale
+
+# ------------- Node Hierarchical class ------------------------------------
+
+class Node:
+    """ Scene graph transform and parameter broadcast node """
+
+    def __init__(self, name='', children=(), transform=identity(), **param):
+        self.transform, self.param, self.name = transform, param, name
+        self.children = list(iter(children))
+
+    def add(self, *drawables):
+        """ Add drawables to this node, simply updating children list """
+        self.children.extend(drawables)
+
+    def draw(self, projection, view, model, **param):
+        """ Recursive draw, passing down named parameters & model matrix. """
+        # merge named parameters given at initialization with those given here
+        param = dict(param, **self.param)
+        # model = ...   # what to insert here for hierarchical update?
+        model = model @ self.transform
+        for child in self.children:
+            child.draw(projection, view, model, **param)
 
 
 # ------------ low level OpenGL object wrappers ----------------------------
@@ -146,7 +168,7 @@ class ColorMesh:
     def __init__(self, attributes, index=None):
         self.vertex_array = VertexArray(attributes, index)
 
-    def draw(self, projection, view, model, color_shader, **_kwargs):
+    def draw(self, projection, view, model, color_shader=None, color=(1,1,1,1), **param):
 
         names = ['view', 'projection', 'model']
         loc = {n: GL.glGetUniformLocation(color_shader.glid, n) for n in names}
@@ -290,6 +312,13 @@ class Viewer:
                 GL.glPolygonMode(GL.GL_FRONT_AND_BACK, next(self.fill_modes))
 
 
+class Cylinder(Node):
+    """ Very simple cylinder based on practical 2 load function """
+
+    def __init__(self):
+        super().__init__()
+        self.add(*load('cylinder.obj'))  # just load the cylinder from file
+
 # -------------- main program and scene setup --------------------------------
 def main():
     """ create a window, add scene objects, then run rendering loop """
@@ -300,6 +329,11 @@ def main():
     if len(sys.argv) < 2:
         print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
               ' format supported by pyassimp.' % (sys.argv[0],))
+
+    cylinder_node = Node(name='my_cylinder',
+                         transform=translate(1, 0, 0), color=(1, 0, 0.5, 1))
+    cylinder_node.add(Cylinder())
+    viewer.add(cylinder_node)
 
     # start rendering loop
     viewer.run()
