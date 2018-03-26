@@ -347,12 +347,22 @@ def main():
         print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
               ' format supported by pyassimp.' % (sys.argv[0],))
 
-    # cylinder_node = RotationControlNode(glfw.KEY_LEFT, glfw.KEY_RIGHT, (0, 1, 0), name='my_cylinder',)
-    # cylinder_node = Node(name='my_cylinder',
-    #                      transform = (translate(1, 0, 0) @ rotate(axis = (1, 0, 0), angle = 45) @ scale(0.1, 0.5, 0.1)), color=(1, 0, 0.5, 1))
-                        #  transform=rotate(axis=(1,0,0), angle=100), color=(1, 0, 0.5, 1))
-    # cylinder_node.add(Cylinder())
-    # viewer.add(cylinder_node)
+    # cylinder = Cylinder()
+    # node1 = Node(transform=scale(.5, 1, .5))  # make a thin cylinder
+    # node1.add(cylinder)          # common shape of arm and forearm
+
+    # node2 = Node(transform=translate(0, 1, 0))
+    # node2.add(node1)
+
+    # cylinder_node = RotationControlNode(glfw.KEY_LEFT, glfw.KEY_RIGHT, (0, 0, 1), name='my_cylinder',)
+    # # cylinder_node = Node(name='my_cylinder',
+    # #                      transform = (translate(1, 0, 0) @ rotate(axis = (1, 0, 0), angle = 45) @ scale(0.1, 0.5, 0.1)), color=(1, 0, 0.5, 1))
+    # #                      transform=rotate(axis=(1,0,0), angle=100), color=(1, 0, 0.5, 1))
+    # cylinder_node.add(node2)
+
+    # cyl = Node(transform=translate(0,1,0), children=[cylinder_node])
+
+    # viewer.add(cyl)
 
     # construct our robot arm hierarchy for drawing in viewer
     cylinder = Cylinder()             # re-use same cylinder instance
@@ -363,18 +373,19 @@ def main():
     arm_node.add(limb_shape)
 
     # robot arm rotation with phi angle)
-    # forearm_node = Node(transform=translate(0, 2.2, 1.1) @ rotate(axis=(1, 0, 0), angle=100))
-    forearm_node = RotationControlNode(glfw.KEY_LEFT, glfw.KEY_RIGHT, (0,0,1), transform=translate(-.4, 1.4, 0) @ rotate((0,0,1), 45))
+    forearm_node = Node(transform=translate(0, 0.5, 0))
     
     forearm_node.add(limb_shape)
 
+    rot_forearm_node = RotationControlNode(glfw.KEY_LEFT, glfw.KEY_RIGHT, (1,0,0), transform=rotate((1,0,0), 45))
+    rot_forearm_node.add(forearm_node)
+
+    move_forearm_node = Node(transform=translate(0,1,0), children=[rot_forearm_node])
+
     base_shape = Node(transform=scale(.5,.1,.5), children=[cylinder], color=(1,1,1,1))
-    # base_shape = RotationControlNode(glfw.KEY_LEFT, glfw.KEY_RIGHT, (1,0,0), transform=scale(.5,.1,.5), children=[cylinder], color=(1,1,1,1))
-    # base_shape = RotationControlNode(glfw.KEY_LEFT, glfw.KEY_RIGHT, (0,0,1), transform=translate(0,2.2,1.1), children=[cylinder], color=(1,1,1,1))
     base_node = Node()
 
-    base_node.add(base_shape, arm_node, forearm_node)
-    # base_node.add(base_shape)
+    base_node.add(base_shape, arm_node, move_forearm_node)
     viewer.add(base_node)
 
     # start rendering loop
