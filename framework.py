@@ -336,34 +336,9 @@ class Cylinder(Node):
         super().__init__()
         self.add(*load('cylinder.obj'))  # just load the cylinder from file
 
-# -------------- main program and scene setup --------------------------------
-def main():
-    """ create a window, add scene objects, then run rendering loop """
-    viewer = Viewer()
+# ---------------- Shape constructors ----------------------------------------
 
-    # place instances of our basic objects
-    viewer.add(*[mesh for file in sys.argv[1:] for mesh in load(file)])
-    if len(sys.argv) < 2:
-        print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
-              ' format supported by pyassimp.' % (sys.argv[0],))
-
-    # cylinder = Cylinder()
-    # node1 = Node(transform=scale(.5, 1, .5))  # make a thin cylinder
-    # node1.add(cylinder)          # common shape of arm and forearm
-
-    # node2 = Node(transform=translate(0, 1, 0))
-    # node2.add(node1)
-
-    # cylinder_node = RotationControlNode(glfw.KEY_LEFT, glfw.KEY_RIGHT, (0, 0, 1), name='my_cylinder',)
-    # # cylinder_node = Node(name='my_cylinder',
-    # #                      transform = (translate(1, 0, 0) @ rotate(axis = (1, 0, 0), angle = 45) @ scale(0.1, 0.5, 0.1)), color=(1, 0, 0.5, 1))
-    # #                      transform=rotate(axis=(1,0,0), angle=100), color=(1, 0, 0.5, 1))
-    # cylinder_node.add(node2)
-
-    # cyl = Node(transform=translate(0,1,0), children=[cylinder_node])
-
-    # viewer.add(cyl)
-
+def robot_arm():
     # construct our robot arm hierarchy for drawing in viewer
     cylinder = Cylinder()             # re-use same cylinder instance
     limb_shape = Node(transform=scale(0.1, 0.5, 0.1))  # make a thin cylinder
@@ -386,7 +361,22 @@ def main():
     base_node = Node()
 
     base_node.add(base_shape, arm_node, move_forearm_node)
-    viewer.add(base_node)
+
+    return base_node
+
+# -------------- main program and scene setup --------------------------------
+def main():
+    """ create a window, add scene objects, then run rendering loop """
+    viewer = Viewer()
+
+    # place instances of our basic objects
+    viewer.add(*[mesh for file in sys.argv[1:] for mesh in load(file)])
+    if len(sys.argv) < 2:
+        print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
+              ' format supported by pyassimp.' % (sys.argv[0],))
+
+    robot_arm_base_node = robot_arm()
+    viewer.add(robot_arm_base_node)
 
     # start rendering loop
     viewer.run()
