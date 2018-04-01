@@ -197,23 +197,33 @@ class VertexArray:
 COLOR_VERT = """#version 330 core
 layout(location = 0) in vec3 position;
 layout(location = 1) in vec3 color;
+layout(location = 1) in vec3 Normal;
 
 uniform mat4 model;
 uniform mat4 view;
 uniform mat4 projection;
+out vec3 normal;
 out vec3 fragColor;
 
 void main() {
     gl_Position = projection * view * model * vec4(position, 1);
     fragColor = color;
+    normal = mat3(transpose(inverse(model))) * Normal;
 }"""
 
 
 COLOR_FRAG = """#version 330 core
 in vec3 fragColor;
+in vec3 normal;
 out vec4 outColor;
+
+uniform vec3 lightDir;
+
 void main() {
-    outColor = vec4(fragColor, 1);
+
+    vec3 norm = normalize(normal);
+    float result = max(dot(norm, lightDir), 0.0);
+    outColor = vec4(normal * result, 1);
 }"""
 
 
@@ -225,15 +235,17 @@ class ColorMesh:
     def __init__(self, attributes, index=None):
         self.vertex_array = VertexArray(attributes, index)
 
+
     def draw(self, projection, view, model, color_shader=None, color=(1,1,1,1), **param):
 
-        names = ['view', 'projection', 'model']
+        names = ['view', 'projection', 'model', 'lightDir']
         loc = {n: GL.glGetUniformLocation(color_shader.glid, n) for n in names}
         GL.glUseProgram(color_shader.glid)
 
         GL.glUniformMatrix4fv(loc['view'], 1, True, view)
         GL.glUniformMatrix4fv(loc['projection'], 1, True, projection)
         GL.glUniformMatrix4fv(loc['model'], 1, True, model)
+        GL.glUniform3fv(loc['lightDir'], 1, (0.0, 1.0, 1.0)) # direccion de fuente de luz
 
         # draw triangle as GL_TRIANGLE vertex array, draw array call
         self.vertex_array.draw(GL.GL_TRIANGLES)
@@ -416,15 +428,14 @@ def main():
     viewer = Viewer()
 
     # place instances of our basic objects
-    # viewer.add(*[mesh for file in sys.argv[1:] for mesh in load(file)])
-    # if len(sys.argv) < 2:
-    #     print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
-    #           ' format supported by pyassimp.' % (sys.argv[0],))
+    viewer.add(*[mesh for file in sys.argv[1:] for mesh in load(file)])
+    if len(sys.argv) < 2:
+        print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
+              ' format supported by pyassimp.' % (sys.argv[0],))
 
-    robot_arm_base_node = robot_arm()
-    viewer.add(robot_arm_base_node)
-
-    robot_arm_base_node.debug_children(2)
+    # robot_arm_base_node = robot_arm()
+    # viewer.add(robot_arm_base_node)
+    # robot_arm_base_node.debug_children(2)
 
     # start rendering loop
     viewer.run()
