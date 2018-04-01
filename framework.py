@@ -14,7 +14,8 @@ import numpy as np                  # all matrix manipulations & OpenGL args
 import pyassimp                     # 3D resource loader
 import pyassimp.errors              # Assimp error management + exceptions
 
-from transform import Trackball, identity, translate, scale, rotate
+from transform import Trackball, identity, translate, scale, rotate, lerp, vec
+from bisect import bisect_left      # search sorted keyframe lists
 
 # ------------- Node Hierarchical class ------------------------------------
 
@@ -38,6 +39,12 @@ class Node:
         for child in self.children:
             child.draw(projection, view, model, **param)
 
+    def debug_children(self, tab):
+        print(tab*' ' + self.name)
+        for child in self.children:
+            if child.__class__ == Node or child.__class__ == RotationControlNode:
+                child.debug_children(tab+2)
+
 
 class RotationControlNode(Node):
     def __init__(self, key_up, key_down, axis, angle=0, **param):
@@ -48,13 +55,46 @@ class RotationControlNode(Node):
 
     def draw(self, projection, view, model, win=None, **param):
         assert win is not None
-        self.angle += 0.05 * int(glfw.get_key(win, self.key_up) == glfw.PRESS)
-        self.angle -= 0.05 * int(glfw.get_key(win, self.key_down) == glfw.PRESS)
+        self.angle += 0.1 * int(glfw.get_key(win, self.key_up) == glfw.PRESS)
+        self.angle -= 0.1 * int(glfw.get_key(win, self.key_down) == glfw.PRESS)
         self.transform = rotate(
             axis=self.axis, angle=self.angle) @ self.transform_backup
 
         # call Node's draw method to pursue the hierarchical tree calling
         super().draw(projection, view, model, win=win, **param)
+
+    def debug_children(self, tab):
+        print(tab*' ' + self.name)
+        for child in self.children:
+            if child.__class__ == Node or child.__class__ == RotationControlNode:
+                child.debug_children(tab+2)
+
+
+# -------------- Interpolator ----------------------------------------------
+
+class KeyFrames:
+    """ Stores keyframe pairs for any value type with interpolation_function"""
+
+    def __init__(self, time_value_pairs, interpolation_function=lerp):
+        if isinstance(time_value_pairs, dict):  # convert to list of pairs
+            time_value_pairs = time_value_pairs.items()
+        keyframes = sorted(((key[0], key[1]) for key in time_value_pairs))
+        self.times, self.values = zip(*keyframes)  # pairs list -> 2 lists
+        self.interpolate = interpolation_function
+
+    def value(self, time):
+        """ Computes interpolated value from keyframes, for a given time """
+
+        # 1. ensure time is within bounds else return boundary keyframe
+        if(time < self.times[0] or self.times[-1] < time):
+            return self.values[-1]
+        
+        # 2. search for closest index entry in self.times, using bisect_left function
+        closest_index = bisect_left(self.times, time)
+        # 3. using the retrieved index, interpolate between the two neighboring values
+        # in self.values, using the initially stored self.interpolate function
+        return self.interpolate(self.values[closest_index-1], self.values[closest_index], 0.5)
+
 
 # ------------ low level OpenGL object wrappers ----------------------------
 class Shader:
@@ -338,31 +378,37 @@ class Cylinder(Node):
 
 # ---------------- Shape constructors ----------------------------------------
 
+
 def robot_arm():
     # construct our robot arm hierarchy for drawing in viewer
     cylinder = Cylinder()             # re-use same cylinder instance
-    limb_shape = Node(transform=scale(0.1, 0.5, 0.1))  # make a thin cylinder
+    limb_shape = Node(transform=scale(0.1, 0.5, 0.1),
+                      name='limb shape')  # make a thin cylinder
     limb_shape.add(cylinder)          # common shape of arm and forearm
 
-    arm_node = Node(transform= translate(0, .5, 0))    # robot arm rotation with phi angle
-    arm_node.add(limb_shape)
+    forearm_node = Node(transform=translate(0, 0.5, 0), name='forearm node')
 
-    # robot arm rotation with phi angle)
-    forearm_node = Node(transform=translate(0, 0.5, 0))
-    
     forearm_node.add(limb_shape)
 
-    rot_forearm_node = RotationControlNode(glfw.KEY_LEFT, glfw.KEY_RIGHT, (1,0,0), transform=rotate((1,0,0), 45))
-    rot_forearm_node.add(forearm_node)
+    rot_forearm_node = RotationControlNode(glfw.KEY_LEFT, glfw.KEY_RIGHT, (
+        1, 0, 0), transform=rotate((1, 0, 0), 45), children=[forearm_node], name='rot forearm node')
 
-    move_forearm_node = Node(transform=translate(0,1,0), children=[rot_forearm_node])
+    move_forearm_node = Node(transform=translate(0, 1, 0), children=[
+                             rot_forearm_node], name='move forearm node')
 
-    base_shape = Node(transform=scale(.5,.1,.5), children=[cylinder], color=(1,1,1,1))
-    base_node = Node()
+    # robot arm rotation with phi angle
+    arm_node = Node(transform=translate(0, .5, 0), name='arm node')
+    arm_node.add(limb_shape)
 
-    base_node.add(base_shape, arm_node, move_forearm_node)
+    rot_arm_node = RotationControlNode(glfw.KEY_UP, glfw.KEY_DOWN, (1, 0, 0), children=[arm_node, move_forearm_node], name='rot arm node')
+    move_arm_node = Node(children=[rot_arm_node], name='move arm node')
 
-    return base_node
+    base_shape_size = Node(transform=scale(.5,.1,.5), children=[cylinder], name='base shape size')
+    base_shape_rot = RotationControlNode(glfw.KEY_P, glfw.KEY_O, (0,1,0), transform=rotate((0,0,1),0), children=[base_shape_size, move_arm_node], name='base rotation')
+
+    root_node = Node(children=[base_shape_rot], name='base shape')
+
+    return root_node
 
 # -------------- main program and scene setup --------------------------------
 def main():
@@ -370,17 +416,24 @@ def main():
     viewer = Viewer()
 
     # place instances of our basic objects
-    viewer.add(*[mesh for file in sys.argv[1:] for mesh in load(file)])
-    if len(sys.argv) < 2:
-        print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
-              ' format supported by pyassimp.' % (sys.argv[0],))
+    # viewer.add(*[mesh for file in sys.argv[1:] for mesh in load(file)])
+    # if len(sys.argv) < 2:
+    #     print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
+    #           ' format supported by pyassimp.' % (sys.argv[0],))
 
     robot_arm_base_node = robot_arm()
     viewer.add(robot_arm_base_node)
 
+    robot_arm_base_node.debug_children(2)
+
     # start rendering loop
     viewer.run()
 
+    # my_keyframes = KeyFrames({0: 1, 3: 7, 6: 20})
+    # print(my_keyframes.value(1.5))
+
+    # vector_keyframes = KeyFrames({0: vec(1, 0, 0), 3: vec(0, 1, 0), 6: vec(0, 0, 1)})
+    # print(vector_keyframes.value(1.5))   # should display numpy vector (0.5, 0.5, 0)
 
 if __name__ == '__main__':
     glfw.init()                # initialize window system glfw
