@@ -204,26 +204,54 @@ uniform mat4 view;
 uniform mat4 projection;
 out vec3 normal;
 out vec3 fragColor;
+out vec3 fragPos;
+out mat3 modelVertex;
+out mat3 viewVertex;
 
 void main() {
     gl_Position = projection * view * model * vec4(position, 1);
     fragColor = color;
     normal = mat3(transpose(inverse(model))) * Normal;
+    fragPos = vec3(model * vec4(position, 1.0f));
+    modelVertex = mat3(model);
+    viewVertex = mat3(view);
 }"""
 
 
 COLOR_FRAG = """#version 330 core
 in vec3 fragColor;
 in vec3 normal;
+in vec3 fragPos;
+in mat3 modelVertex;
+in mat3 viewVertex;
+
 out vec4 outColor;
 
 uniform vec3 lightDir;
 
 void main() {
+    vec3 red = vec3(1.0, 0.0, 0.0);
 
+    //ambient
+    vec3 ambient = vec3(0.1,0.1,0.1) * vec3(1.0, 0.0, 0.0);
+
+    //diffuse
     vec3 norm = normalize(normal);
-    float result = max(dot(norm, lightDir), 0.0);
-    outColor = vec4(normal * result, 1);
+    vec3 lightDir_norm = normalize(-lightDir);
+    float result = max(dot(norm, lightDir_norm), 0.0);
+    vec3 diffuse = vec3(result * red);
+
+    //specular
+//    vec3 viewDir = normalize( vec3(viewVertex * modelVertex).xyz - fragPos);
+    vec3 viewDir = normalize(fragPos);
+    vec3 reflectDir = normalize(reflect(-lightDir_norm, norm));
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 1);
+    vec3 specular =  spec * red;
+
+    //outColor = vec4(ambient, 1);
+    //outColor = vec4(diffuse, 1);
+    //outColor = vec4((specular), 1);
+    outColor = vec4(diffuse + specular + ambient, 1);
 }"""
 
 
@@ -245,7 +273,7 @@ class ColorMesh:
         GL.glUniformMatrix4fv(loc['view'], 1, True, view)
         GL.glUniformMatrix4fv(loc['projection'], 1, True, projection)
         GL.glUniformMatrix4fv(loc['model'], 1, True, model)
-        GL.glUniform3fv(loc['lightDir'], 1, (0.0, 1.0, 1.0)) # direccion de fuente de luz
+        GL.glUniform3fv(loc['lightDir'], 1, (0.0, 0.0, -1.0)) # direccion de fuente de luz
 
         # draw triangle as GL_TRIANGLE vertex array, draw array call
         self.vertex_array.draw(GL.GL_TRIANGLES)
@@ -428,14 +456,22 @@ def main():
     viewer = Viewer()
 
     # place instances of our basic objects
-    viewer.add(*[mesh for file in sys.argv[1:] for mesh in load(file)])
-    if len(sys.argv) < 2:
-        print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
-              ' format supported by pyassimp.' % (sys.argv[0],))
+    # viewer.add(*[mesh for file in sys.argv[1:] for mesh in load(file)])
+    # if len(sys.argv) < 2:
+    #     print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
+    #           ' format supported by pyassimp.' % (sys.argv[0],))
 
     # robot_arm_base_node = robot_arm()
     # viewer.add(robot_arm_base_node)
     # robot_arm_base_node.debug_children(2)
+
+    esfera = Node(children=[*load("suzanne.obj")])
+    node = RotationControlNode(glfw.KEY_P, glfw.KEY_O, (0,1,0), children=[esfera], transform=rotate((0,0,1),0))
+
+    viewer.add(node)
+    # viewer.add(robot_arm())
+
+    # viewer.add(*load("sphere.obj"))
 
     # start rendering loop
     viewer.run()
