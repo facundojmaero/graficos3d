@@ -205,16 +205,12 @@ uniform mat4 projection;
 out vec3 normal;
 out vec3 fragColor;
 out vec3 fragPos;
-out mat3 modelVertex;
-out mat3 viewVertex;
 
 void main() {
     gl_Position = projection * view * model * vec4(position, 1);
     fragColor = color;
     normal = mat3(transpose(inverse(model))) * Normal;
     fragPos = vec3(model * vec4(position, 1.0f));
-    modelVertex = mat3(model);
-    viewVertex = mat3(view);
 }"""
 
 
@@ -222,35 +218,33 @@ COLOR_FRAG = """#version 330 core
 in vec3 fragColor;
 in vec3 normal;
 in vec3 fragPos;
-in mat3 modelVertex;
-in mat3 viewVertex;
 
 out vec4 outColor;
 
 uniform vec3 lightDir;
+uniform float s;
+uniform vec3 Ka;
+uniform vec3 Kd;
+uniform vec3 Ks;
 
 void main() {
-    vec3 red = vec3(1.0, 0.0, 0.0);
-
     //ambient
-    vec3 ambient = vec3(0.1,0.1,0.1) * vec3(1.0, 0.0, 0.0);
+    vec3 ambient = Ka;
 
     //diffuse
     vec3 norm = normalize(normal);
     vec3 lightDir_norm = normalize(-lightDir);
     float result = max(dot(norm, lightDir_norm), 0.0);
-    vec3 diffuse = vec3(result * red);
+    vec3 diffuse = result * Kd;
+    diffuse = diffuse / pow( distance(fragPos, lightDir), 2);
 
     //specular
-//    vec3 viewDir = normalize( vec3(viewVertex * modelVertex).xyz - fragPos);
     vec3 viewDir = normalize(fragPos);
     vec3 reflectDir = normalize(reflect(-lightDir_norm, norm));
-    float spec = pow(max(dot(viewDir, reflectDir), 0.0), 1);
-    vec3 specular =  spec * red;
-
-    //outColor = vec4(ambient, 1);
-    //outColor = vec4(diffuse, 1);
-    //outColor = vec4((specular), 1);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), s);
+    vec3 specular =  spec * Ks;
+    specular = specular / pow( distance(fragPos, lightDir) ,2);
+    
     outColor = vec4(diffuse + specular + ambient, 1);
 }"""
 
@@ -264,19 +258,45 @@ class ColorMesh:
         self.vertex_array = VertexArray(attributes, index)
 
 
-    def draw(self, projection, view, model, color_shader=None, color=(1,1,1,1), **param):
+    def draw(self, projection, view, model, color_shader=None, color=(1,1,1,1), s=1, **param):
 
-        names = ['view', 'projection', 'model', 'lightDir']
+        names = ['view', 'projection', 'model', 'lightDir', 's']
         loc = {n: GL.glGetUniformLocation(color_shader.glid, n) for n in names}
         GL.glUseProgram(color_shader.glid)
 
         GL.glUniformMatrix4fv(loc['view'], 1, True, view)
         GL.glUniformMatrix4fv(loc['projection'], 1, True, projection)
         GL.glUniformMatrix4fv(loc['model'], 1, True, model)
-        GL.glUniform3fv(loc['lightDir'], 1, (0.0, 0.0, -1.0)) # direccion de fuente de luz
+        GL.glUniform3fv(loc['lightDir'], 1, (0.0, 0.0, -s)) # direccion de fuente de luz
 
         # draw triangle as GL_TRIANGLE vertex array, draw array call
         self.vertex_array.draw(GL.GL_TRIANGLES)
+
+class PhongMesh:
+
+    def __init__(self, attributes, index=None):
+        self.vertex_array = VertexArray(attributes, index)
+
+    def draw(self, projection, view, model, color_shader=None, K_d=(1, 1, 1),
+             K_a=(0, 0, 0), K_s=(1, 1, 1), s=16., **params):
+             
+        names = ['view', 'projection', 'model', 'lightDir', 's', 'Kd', 'Ka', 'Ks']
+        loc = {n: GL.glGetUniformLocation(color_shader.glid, n) for n in names}
+        GL.glUseProgram(color_shader.glid)
+
+        GL.glUniformMatrix4fv(loc['view'], 1, True, view)
+        GL.glUniformMatrix4fv(loc['projection'], 1, True, projection)
+        GL.glUniformMatrix4fv(loc['model'], 1, True, model)
+        # direccion de fuente de luz
+        GL.glUniform3fv(loc['lightDir'], 1, (0.0, 0.0, -2))
+        GL.glUniform1f(loc['s'], s)        
+        GL.glUniform3fv(loc['Ka'], 1, K_a)
+        GL.glUniform3fv(loc['Kd'], 1, K_s)
+        GL.glUniform3fv(loc['Ks'], 1, K_d)        
+
+        # draw triangle as GL_TRIANGLE vertex array, draw array call
+        self.vertex_array.draw(GL.GL_TRIANGLES)
+
 
 
 class SimpleTriangle(ColorMesh):
@@ -301,7 +321,24 @@ def load(file):
         print('ERROR: pyassimp unable to load', file)
         return []  # error reading => return empty list
 
-    meshes = [ColorMesh([m.vertices, m.normals], m.faces) for m in scene.meshes]
+    # reorganize and keep only first material properties of each
+    for mat in scene.materials:
+        mat.tokens = dict(reversed(list(mat.properties.items())))
+
+    # prepare mesh nodes
+    meshes = []
+    for mesh in scene.meshes:
+        mat = scene.materials[mesh.materialindex].tokens
+        node = Node(K_d=mat.get('diffuse', (1, 1, 1)),
+                    K_a=mat.get('ambient', (0, 0, 0)),
+                    K_s=mat.get('specular', (1, 1, 1)),
+                    s=mat.get('shininess', 16.))
+        node.add(PhongMesh([mesh.vertices, mesh.normals], mesh.faces))
+        # node.add(ColorMesh([mesh.vertices, mesh.normals], mesh.faces))
+        meshes.append(node)
+
+    # meshes = [PhongMesh([m.vertices, m.normals], m.faces) for m in scene.meshes]
+
     size = sum((mesh.faces.shape[0] for mesh in scene.meshes))
     print('Loaded %s\t(%d meshes, %d faces)' % (file, len(scene.meshes), size))
 
@@ -374,6 +411,8 @@ class Viewer:
 
         # cyclic iterator to easily toggle polygon rendering modes
         self.fill_modes = cycle([GL.GL_LINE, GL.GL_POINT, GL.GL_FILL])
+
+        self.s = 1
         
     def run(self):
         """ Main render loop for this OpenGL window """
@@ -388,7 +427,7 @@ class Viewer:
             # draw our scene objects
             for drawable in self.drawables:
                 drawable.draw(projection, view, identity(),
-                              color_shader=self.color_shader, win=self.win)
+                              color_shader=self.color_shader, win=self.win, s=self.s)
 
             # flush render commands, and swap draw buffers
             glfw.swap_buffers(self.win)
@@ -407,7 +446,6 @@ class Viewer:
                 glfw.set_window_should_close(self.win, True)
             if key == glfw.KEY_W:
                 GL.glPolygonMode(GL.GL_FRONT_AND_BACK, next(self.fill_modes))
-
 
 class Cylinder(Node):
     """ Very simple cylinder based on practical 2 load function """
@@ -456,23 +494,20 @@ def main():
     viewer = Viewer()
 
     # place instances of our basic objects
-    # viewer.add(*[mesh for file in sys.argv[1:] for mesh in load(file)])
-    # if len(sys.argv) < 2:
-    #     print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
-    #           ' format supported by pyassimp.' % (sys.argv[0],))
+    viewer.add(*[mesh for file in sys.argv[1:] for mesh in load(file)])
+    if len(sys.argv) < 2:
+        print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
+              ' format supported by pyassimp.' % (sys.argv[0],))
 
     # robot_arm_base_node = robot_arm()
     # viewer.add(robot_arm_base_node)
     # robot_arm_base_node.debug_children(2)
-
-    esfera = Node(children=[*load("suzanne.obj")])
-    node = RotationControlNode(glfw.KEY_P, glfw.KEY_O, (0,1,0), children=[esfera], transform=rotate((0,0,1),0))
-
-    viewer.add(node)
     # viewer.add(robot_arm())
 
-    # viewer.add(*load("sphere.obj"))
+    # esfera = Node(children=[*load("suzanne2.obj")])
+    # node = RotationControlNode(glfw.KEY_P, glfw.KEY_O, (0,1,0), children=[esfera], transform=rotate((0,0,1),0))
 
+    # viewer.add(node)
     # start rendering loop
     viewer.run()
 
