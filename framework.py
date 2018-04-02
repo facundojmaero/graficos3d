@@ -22,7 +22,6 @@ from itertools import cycle
 
 # -------------- OpenGL Texture Wrapper ---------------------------------------
 
-
 class Texture:
     """ Helper class to create and automatically destroy textures """
 
@@ -63,10 +62,13 @@ class Texture:
 TEXTURE_VERT = """#version 330 core
 uniform mat4 modelviewprojection;
 layout(location = 0) in vec3 position;
+layout(location = 1) in vec2 vertexUV;
+
 out vec2 fragTexCoord;
 void main() {
     gl_Position = modelviewprojection * vec4(position, 1);
-    fragTexCoord = position.xy;
+    //fragTexCoord = position.xy;
+    fragTexCoord = vertexUV;
 }"""
 
 TEXTURE_FRAG = """#version 330 core
@@ -76,6 +78,69 @@ out vec4 outColor;
 void main() {
     outColor = texture(diffuseMap, fragTexCoord);
 }"""
+
+
+class TexturedMesh:
+    """ Simple first textured object """
+
+    def __init__(self, file, vertices, faces):
+
+        self.file = file
+
+        # feel free to move this up in the viewer as per other practicals
+        self.shader = Shader(TEXTURE_VERT, TEXTURE_FRAG)
+
+        self.vertex_array = VertexArray([vertices[0], vertices[1]], faces)
+
+        # interactive toggles
+        self.wrap = cycle([GL.GL_REPEAT, GL.GL_MIRRORED_REPEAT,
+                           GL.GL_CLAMP_TO_BORDER, GL.GL_CLAMP_TO_EDGE])
+        self.filter = cycle([(GL.GL_NEAREST, GL.GL_NEAREST),
+                             (GL.GL_LINEAR, GL.GL_LINEAR),
+                             (GL.GL_LINEAR, GL.GL_LINEAR_MIPMAP_LINEAR)])
+        self.wrap_mode, self.filter_mode = next(self.wrap), next(self.filter)
+
+        # setup texture and upload it to GPU
+        self.texture = Texture(self.file, self.wrap_mode, *self.filter_mode)
+
+        self.f6 = 0
+        self.f7 = 0
+
+    def draw(self, projection, view, model, win=None, **_kwargs):
+
+        # some interactive elements
+        if glfw.get_key(win, glfw.KEY_F6) == glfw.PRESS:
+            self.f6 += 1
+            if(self.f6%100 == 0):
+                self.f6 = 0
+                self.wrap_mode = next(self.wrap)
+                self.texture = Texture(
+                    self.file, self.wrap_mode, *self.filter_mode)
+
+        if glfw.get_key(win, glfw.KEY_F7) == glfw.PRESS:
+            self.f7 += 1
+            if(self.f7 % 100 == 0):
+                self.f7 = 0
+                self.filter_mode = next(self.filter)
+                self.texture = Texture(
+                    self.file, self.wrap_mode, *self.filter_mode)
+
+        GL.glUseProgram(self.shader.glid)
+
+        # projection geometry
+        loc = GL.glGetUniformLocation(self.shader.glid, 'modelviewprojection')
+        GL.glUniformMatrix4fv(loc, 1, True, projection @ view @ model)
+
+        # texture access setups
+        loc = GL.glGetUniformLocation(self.shader.glid, 'diffuseMap')
+        GL.glActiveTexture(GL.GL_TEXTURE0)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.texture.glid)
+        GL.glUniform1i(loc, 0)
+        self.vertex_array.draw(GL.GL_TRIANGLES)
+
+        # leave clean state for easier debugging
+        GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
+        GL.glUseProgram(0)
 
 
 class TexturedPlane:
@@ -604,6 +669,51 @@ def robot_arm():
 
     return root_node
 
+# -------------- 3D textured mesh loader ---------------------------------------
+
+def load_textured(file):
+    """ load resources using pyassimp, return list of TexturedMeshes """
+    try:
+        option = pyassimp.postprocess.aiProcessPreset_TargetRealtime_MaxQuality
+        scene = pyassimp.load(file, option)
+    except pyassimp.errors.AssimpError:
+        print('ERROR: pyassimp unable to load', file)
+        return []  # error reading => return empty list
+
+    # Note: embedded textures not supported at the moment
+    path = os.path.dirname(file)
+    path = os.path.join('.', '') if path == '' else path
+    for mat in scene.materials:
+        mat.tokens = dict(reversed(list(mat.properties.items())))
+        if 'file' in mat.tokens:  # texture file token
+            tname = mat.tokens['file'].split('/')[-1].split('\\')[-1]
+            # search texture in file's whole subdir since path often screwed up
+            tname = [os.path.join(d[0], f) for d in os.walk(path) for f in d[2]
+                     if tname.startswith(f) or f.startswith(tname)]
+            if tname:
+                mat.texture = tname[0]
+            else:
+                print('Failed to find texture:', tname)
+
+    # prepare textured mesh
+    meshes = []
+    for mesh in scene.meshes:
+        texture = scene.materials[mesh.materialindex].texture
+
+        # tex coords in raster order: compute 1 - y to follow OpenGL convention
+        tex_uv = ((0, 1) + mesh.texturecoords[0][:, :2] * (1, -1)
+                  if mesh.texturecoords.size else None)
+
+        # create the textured mesh object from texture, attributes, and indices
+        meshes.append(TexturedMesh(texture, [mesh.vertices, tex_uv], mesh.faces))
+
+    size = sum((mesh.faces.shape[0] for mesh in scene.meshes))
+    print('Loaded %s\t(%d meshes, %d faces)' % (file, len(scene.meshes), size))
+
+    pyassimp.release(scene)
+    return meshes
+
+
 # -------------- main program and scene setup --------------------------------
 def main():
     """ create a window, add scene objects, then run rendering loop """
@@ -627,8 +737,10 @@ def main():
     # start rendering loop
 
 
-    viewer.add(TexturedPlane("grass.png"))
+    # viewer.add(TexturedPlane("grass.png"))
+    meshes = load_textured("bunny/bunny.obj")
 
+    viewer.add(meshes[0])
     viewer.run()
 
     # my_keyframes = KeyFrames({0: 1, 3: 7, 6: 20})
