@@ -57,7 +57,6 @@ class Texture:
     def __del__(self):  # delete GL texture from GPU when object dies
         GL.glDeleteTextures(self.glid)
 
-
 # -------------- Example texture plane class ----------------------------------
 TEXTURE_VERT = """#version 330 core
 uniform mat4 modelviewprojection;
@@ -78,125 +77,6 @@ out vec4 outColor;
 void main() {
     outColor = texture(diffuseMap, fragTexCoord);
 }"""
-
-
-class TexturedMesh:
-    """ Simple first textured object """
-
-    def __init__(self, file, vertices, faces):
-
-        self.file = file
-
-        # feel free to move this up in the viewer as per other practicals
-        self.shader = Shader(TEXTURE_VERT, TEXTURE_FRAG)
-
-        self.vertex_array = VertexArray([vertices[0], vertices[1]], faces)
-
-        # interactive toggles
-        self.wrap = cycle([GL.GL_REPEAT, GL.GL_MIRRORED_REPEAT,
-                           GL.GL_CLAMP_TO_BORDER, GL.GL_CLAMP_TO_EDGE])
-        self.filter = cycle([(GL.GL_NEAREST, GL.GL_NEAREST),
-                             (GL.GL_LINEAR, GL.GL_LINEAR),
-                             (GL.GL_LINEAR, GL.GL_LINEAR_MIPMAP_LINEAR)])
-        self.wrap_mode, self.filter_mode = next(self.wrap), next(self.filter)
-
-        # setup texture and upload it to GPU
-        self.texture = Texture(self.file, self.wrap_mode, *self.filter_mode)
-
-        self.f6 = 0
-        self.f7 = 0
-
-    def draw(self, projection, view, model, win=None, **_kwargs):
-
-        # some interactive elements
-        if glfw.get_key(win, glfw.KEY_F6) == glfw.PRESS:
-            self.f6 += 1
-            if(self.f6%100 == 0):
-                self.f6 = 0
-                self.wrap_mode = next(self.wrap)
-                self.texture = Texture(
-                    self.file, self.wrap_mode, *self.filter_mode)
-
-        if glfw.get_key(win, glfw.KEY_F7) == glfw.PRESS:
-            self.f7 += 1
-            if(self.f7 % 100 == 0):
-                self.f7 = 0
-                self.filter_mode = next(self.filter)
-                self.texture = Texture(
-                    self.file, self.wrap_mode, *self.filter_mode)
-
-        GL.glUseProgram(self.shader.glid)
-
-        # projection geometry
-        loc = GL.glGetUniformLocation(self.shader.glid, 'modelviewprojection')
-        GL.glUniformMatrix4fv(loc, 1, True, projection @ view @ model)
-
-        # texture access setups
-        loc = GL.glGetUniformLocation(self.shader.glid, 'diffuseMap')
-        GL.glActiveTexture(GL.GL_TEXTURE0)
-        GL.glBindTexture(GL.GL_TEXTURE_2D, self.texture.glid)
-        GL.glUniform1i(loc, 0)
-        self.vertex_array.draw(GL.GL_TRIANGLES)
-
-        # leave clean state for easier debugging
-        GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
-        GL.glUseProgram(0)
-
-
-class TexturedPlane:
-    """ Simple first textured object """
-
-    def __init__(self, file):
-        # feel free to move this up in the viewer as per other practicals
-        self.shader = Shader(TEXTURE_VERT, TEXTURE_FRAG)
-
-        # triangle and face buffers
-        vertices = 100 * \
-            np.array(((-1, -1, 0), (1, -1, 0), (1, 1, 0), (-1, 1, 0)), np.float32)
-        faces = np.array(((0, 1, 2), (0, 2, 3)), np.uint32)
-        self.vertex_array = VertexArray([vertices], faces)
-
-        # interactive toggles
-        self.wrap = cycle([GL.GL_REPEAT, GL.GL_MIRRORED_REPEAT,
-                           GL.GL_CLAMP_TO_BORDER, GL.GL_CLAMP_TO_EDGE])
-        self.filter = cycle([(GL.GL_NEAREST, GL.GL_NEAREST),
-                             (GL.GL_LINEAR, GL.GL_LINEAR),
-                             (GL.GL_LINEAR, GL.GL_LINEAR_MIPMAP_LINEAR)])
-        self.wrap_mode, self.filter_mode = next(self.wrap), next(self.filter)
-        self.file = file
-
-        # setup texture and upload it to GPU
-        self.texture = Texture(file, self.wrap_mode, *self.filter_mode)
-
-    def draw(self, projection, view, model, win=None, **_kwargs):
-
-        # some interactive elements
-        if glfw.get_key(win, glfw.KEY_F6) == glfw.PRESS:
-            self.wrap_mode = next(self.wrap)
-            self.texture = Texture(
-                self.file, self.wrap_mode, *self.filter_mode)
-
-        if glfw.get_key(win, glfw.KEY_F7) == glfw.PRESS:
-            self.filter_mode = next(self.filter)
-            self.texture = Texture(
-                self.file, self.wrap_mode, *self.filter_mode)
-
-        GL.glUseProgram(self.shader.glid)
-
-        # projection geometry
-        loc = GL.glGetUniformLocation(self.shader.glid, 'modelviewprojection')
-        GL.glUniformMatrix4fv(loc, 1, True, projection @ view @ model)
-
-        # texture access setups
-        loc = GL.glGetUniformLocation(self.shader.glid, 'diffuseMap')
-        GL.glActiveTexture(GL.GL_TEXTURE0)
-        GL.glBindTexture(GL.GL_TEXTURE_2D, self.texture.glid)
-        GL.glUniform1i(loc, 0)
-        self.vertex_array.draw(GL.GL_TRIANGLES)
-
-        # leave clean state for easier debugging
-        GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
-        GL.glUseProgram(0)
 
 # ------------- Node Hierarchical class ------------------------------------
 
@@ -226,7 +106,6 @@ class Node:
             if child.__class__ == Node or child.__class__ == RotationControlNode:
                 child.debug_children(tab+2)
 
-
 class RotationControlNode(Node):
     def __init__(self, key_up, key_down, axis, angle=0, **param):
         super().__init__(**param)   # forward base constructor named arguments
@@ -249,7 +128,6 @@ class RotationControlNode(Node):
         for child in self.children:
             if child.__class__ == Node or child.__class__ == RotationControlNode:
                 child.debug_children(tab+2)
-
 
 # -------------- Interpolator ----------------------------------------------
 
@@ -275,7 +153,6 @@ class KeyFrames:
         # 3. using the retrieved index, interpolate between the two neighboring values
         # in self.values, using the initially stored self.interpolate function
         return self.interpolate(self.values[closest_index-1], self.values[closest_index], 0.5)
-
 
 # ------------ low level OpenGL object wrappers ----------------------------
 class Shader:
@@ -319,7 +196,6 @@ class Shader:
         GL.glUseProgram(0)
         if self.glid:                      # if this is a valid shader object
             GL.glDeleteProgram(self.glid)  # object dies => destroy GL object
-
 
 class VertexArray:
     """helper class to create and self destroy vertex array objects."""
@@ -372,7 +248,6 @@ class VertexArray:
     def __del__(self):  # object dies => kill GL array and buffers from GPU
         GL.glDeleteVertexArrays(1, [self.glid])
         GL.glDeleteBuffers(len(self.buffers), self.buffers)
-
 
 # ------------  simple color fragment shader demonstrated in Practical 1 ------
 COLOR_VERT = """#version 330 core
@@ -432,27 +307,6 @@ void main() {
 
 # ------------  Scene object classes ------------------------------------------
 
-# mesh to refactor all previous classes
-class ColorMesh:
-
-    def __init__(self, attributes, index=None):
-        self.vertex_array = VertexArray(attributes, index)
-
-
-    def draw(self, projection, view, model, color_shader=None, color=(1,1,1,1), s=1, **param):
-
-        names = ['view', 'projection', 'model', 'lightDir', 's']
-        loc = {n: GL.glGetUniformLocation(color_shader.glid, n) for n in names}
-        GL.glUseProgram(color_shader.glid)
-
-        GL.glUniformMatrix4fv(loc['view'], 1, True, view)
-        GL.glUniformMatrix4fv(loc['projection'], 1, True, projection)
-        GL.glUniformMatrix4fv(loc['model'], 1, True, model)
-        GL.glUniform3fv(loc['lightDir'], 1, (0.0, 0.0, -s)) # direccion de fuente de luz
-
-        # draw triangle as GL_TRIANGLE vertex array, draw array call
-        self.vertex_array.draw(GL.GL_TRIANGLES)
-
 class PhongMesh:
 
     def __init__(self, attributes, index=None):
@@ -479,53 +333,67 @@ class PhongMesh:
         self.vertex_array.draw(GL.GL_TRIANGLES)
 
 
+class TexturedMesh:
+    """ Simple first textured object """
 
-class SimpleTriangle(ColorMesh):
-    """Hello triangle object"""
+    def __init__(self, file, vertices, faces):
 
-    def __init__(self):
+        self.file = file
 
-        # triangle position buffer
-        position = np.array(((0, .5, 0), (.5, -.5, 0), (-.5, -.5, 0)), 'f')
-        color = np.array(((1, 0, 0), (0, 1, 0), (0, 0, 1)), 'f')
+        # feel free to move this up in the viewer as per other practicals
+        self.shader = Shader(TEXTURE_VERT, TEXTURE_FRAG)
 
-        super().__init__([position, color])
+        self.vertex_array = VertexArray([vertices[0], vertices[1]], faces)
 
+        # interactive toggles
+        self.wrap = cycle([GL.GL_REPEAT, GL.GL_MIRRORED_REPEAT,
+                           GL.GL_CLAMP_TO_BORDER, GL.GL_CLAMP_TO_EDGE])
+        self.filter = cycle([(GL.GL_NEAREST, GL.GL_NEAREST),
+                             (GL.GL_LINEAR, GL.GL_LINEAR),
+                             (GL.GL_LINEAR, GL.GL_LINEAR_MIPMAP_LINEAR)])
+        self.wrap_mode, self.filter_mode = next(self.wrap), next(self.filter)
 
-# -------------- 3D ressource loader -----------------------------------------
-def load(file):
-    """ load resources from file using pyassimp, return list of ColorMesh """
-    try:
-        option = pyassimp.postprocess.aiProcessPreset_TargetRealtime_MaxQuality
-        scene = pyassimp.load(file, option)
-    except pyassimp.errors.AssimpError:
-        print('ERROR: pyassimp unable to load', file)
-        return []  # error reading => return empty list
+        # setup texture and upload it to GPU
+        self.texture = Texture(self.file, self.wrap_mode, *self.filter_mode)
 
-    # reorganize and keep only first material properties of each
-    for mat in scene.materials:
-        mat.tokens = dict(reversed(list(mat.properties.items())))
+        self.f6 = 0
+        self.f7 = 0
 
-    # prepare mesh nodes
-    meshes = []
-    for mesh in scene.meshes:
-        mat = scene.materials[mesh.materialindex].tokens
-        node = Node(K_d=mat.get('diffuse', (1, 1, 1)),
-                    K_a=mat.get('ambient', (0, 0, 0)),
-                    K_s=mat.get('specular', (1, 1, 1)),
-                    s=mat.get('shininess', 16.))
-        node.add(PhongMesh([mesh.vertices, mesh.normals], mesh.faces))
-        # node.add(ColorMesh([mesh.vertices, mesh.normals], mesh.faces))
-        meshes.append(node)
+    def draw(self, projection, view, model, win=None, **_kwargs):
 
-    # meshes = [PhongMesh([m.vertices, m.normals], m.faces) for m in scene.meshes]
+        # some interactive elements
+        if glfw.get_key(win, glfw.KEY_F6) == glfw.PRESS:
+            self.f6 += 1
+            if(self.f6 % 100 == 0):
+                self.f6 = 0
+                self.wrap_mode = next(self.wrap)
+                self.texture = Texture(
+                    self.file, self.wrap_mode, *self.filter_mode)
 
-    size = sum((mesh.faces.shape[0] for mesh in scene.meshes))
-    print('Loaded %s\t(%d meshes, %d faces)' % (file, len(scene.meshes), size))
+        if glfw.get_key(win, glfw.KEY_F7) == glfw.PRESS:
+            self.f7 += 1
+            if(self.f7 % 100 == 0):
+                self.f7 = 0
+                self.filter_mode = next(self.filter)
+                self.texture = Texture(
+                    self.file, self.wrap_mode, *self.filter_mode)
 
-    pyassimp.release(scene)
-    return meshes
+        GL.glUseProgram(self.shader.glid)
 
+        # projection geometry
+        loc = GL.glGetUniformLocation(self.shader.glid, 'modelviewprojection')
+        GL.glUniformMatrix4fv(loc, 1, True, projection @ view @ model)
+
+        # texture access setups
+        loc = GL.glGetUniformLocation(self.shader.glid, 'diffuseMap')
+        GL.glActiveTexture(GL.GL_TEXTURE0)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.texture.glid)
+        GL.glUniform1i(loc, 0)
+        self.vertex_array.draw(GL.GL_TRIANGLES)
+
+        # leave clean state for easier debugging
+        GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
+        GL.glUseProgram(0)
 
 # ------------  Viewer class & window management ------------------------------
 class GLFWTrackball(Trackball):
@@ -550,7 +418,6 @@ class GLFWTrackball(Trackball):
     def on_scroll(self, win, _deltax, deltay):
         """ Scroll controls the camera distance to trackball center """
         self.zoom(deltay, glfw.get_window_size(win)[1])
-
 
 class Viewer:
     """ GLFW viewer window, with classic initialization & graphics loop """
@@ -698,14 +565,28 @@ def load_textured(file):
     # prepare textured mesh
     meshes = []
     for mesh in scene.meshes:
-        texture = scene.materials[mesh.materialindex].texture
 
-        # tex coords in raster order: compute 1 - y to follow OpenGL convention
-        tex_uv = ((0, 1) + mesh.texturecoords[0][:, :2] * (1, -1)
-                  if mesh.texturecoords.size else None)
+        try:
+            texture = scene.materials[mesh.materialindex].texture
 
-        # create the textured mesh object from texture, attributes, and indices
-        meshes.append(TexturedMesh(texture, [mesh.vertices, tex_uv], mesh.faces))
+            # tex coords in raster order: compute 1 - y to follow OpenGL convention
+            tex_uv = ((0, 1) + mesh.texturecoords[0][:, :2] * (1, -1)
+                    if mesh.texturecoords.size else None)
+
+            # create the textured mesh object from texture, attributes, and indices
+            meshes.append(TexturedMesh(texture, [mesh.vertices, tex_uv], mesh.faces))
+
+        except:
+            print("Error, no texture found")
+
+            mat = scene.materials[mesh.materialindex].tokens
+            node = Node(K_d=mat.get('diffuse', (1, 1, 1)),
+                        K_a=mat.get('ambient', (0, 0, 0)),
+                        K_s=mat.get('specular', (1, 1, 1)),
+                        s=mat.get('shininess', 16.))
+            node.add(PhongMesh([mesh.vertices, mesh.normals], mesh.faces))
+            meshes.append(node)
+
 
     size = sum((mesh.faces.shape[0] for mesh in scene.meshes))
     print('Loaded %s\t(%d meshes, %d faces)' % (file, len(scene.meshes), size))
@@ -720,27 +601,25 @@ def main():
     viewer = Viewer()
 
     # place instances of our basic objects
-    # viewer.add(*[mesh for file in sys.argv[1:] for mesh in load(file)])
-    # if len(sys.argv) < 2:
-    #     print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
-    #           ' format supported by pyassimp.' % (sys.argv[0],))
+    # viewer.add(*[mesh for file in sys.argv[1:] for mesh in load_textured(file)])
 
-    # robot_arm_base_node = robot_arm()
-    # viewer.add(robot_arm_base_node)
-    # robot_arm_base_node.debug_children(2)
-    # viewer.add(robot_arm())
+    for file in sys.argv[1:]:
+        for mesh in load_textured(file):
+            # viewer.add(mesh)
+            node = Node(children=[mesh])
+            rotation_node = RotationControlNode(glfw.KEY_P, glfw.KEY_O, (0, 1, 0), 
+                                                children=[node], transform=rotate((0, 0, 1), 0))
+            viewer.add(rotation_node)
 
-    # esfera = Node(children=[*load("suzanne2.obj")])
+    if len(sys.argv) < 2:
+        print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
+              ' format supported by pyassimp.' % (sys.argv[0],))
+
+    # esfera = Node(children=[*load_textured("bunny/bunny.obj")])
     # node = RotationControlNode(glfw.KEY_P, glfw.KEY_O, (0,1,0), children=[esfera], transform=rotate((0,0,1),0))
-
     # viewer.add(node)
-    # start rendering loop
 
 
-    # viewer.add(TexturedPlane("grass.png"))
-    meshes = load_textured("bunny/bunny.obj")
-
-    viewer.add(meshes[0])
     viewer.run()
 
     # my_keyframes = KeyFrames({0: 1, 3: 7, 6: 20})
