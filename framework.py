@@ -17,8 +17,42 @@ import pyassimp.errors              # Assimp error management + exceptions
 from transform import Trackball, identity, translate, scale, rotate, lerp, vec
 from bisect import bisect_left      # search sorted keyframe lists
 
+from transform import (quaternion_slerp, quaternion_matrix, quaternion,
+                       quaternion_from_euler)
+
 from PIL import Image               # load images for textures
 from itertools import cycle
+
+#-------------------- Keyframes -----------------------------------------------
+
+class TransformKeyFrames:
+    """ KeyFrames-like object dedicated to 3D transforms """
+    def __init__(self, translate_keys, rotate_keys, scale_keys):
+        """ stores 3 keyframe sets for translation, rotation, scale """
+        self.translate = KeyFrames(translate_keys)
+        self.rotate = KeyFrames(rotate_keys, interpolation_function=quaternion_slerp)
+        self.scale = KeyFrames(scale_keys)
+
+    def value(self, time):
+        """ Compute each component's interpolation and compose TRS matrix """
+
+        T_interp = self.translate.value(time)
+        R_interp = self.rotate.value(time)
+        S_interp = self.scale.value(time)
+
+        T_interp = np.append(T_interp, 0)
+
+        Z = np.zeros((4,3))
+        T = np.append(Z, T_interp[:, None], axis=1)
+
+        R = quaternion_matrix(R_interp)
+
+        S_interp = np.array([S_interp, S_interp, S_interp, 0])
+        S = np.zeros((3,4)) + S_interp
+        S = np.vstack([S, np.array([0,0,0,1])])
+
+        return T + np.multiply(R, S)
+        # return T_interp @ quaternion_matrix(R_interp) @ S_interp
 
 # -------------- OpenGL Texture Wrapper ---------------------------------------
 
@@ -129,6 +163,19 @@ class RotationControlNode(Node):
             if child.__class__ == Node or child.__class__ == RotationControlNode:
                 child.debug_children(tab+2)
 
+class KeyFrameControlNode(Node):
+    """ Place node with transform keys above a controlled subtree """
+
+    def __init__(self, translate_keys, rotate_keys, scale_keys, **kwargs):
+        super().__init__(**kwargs)
+        self.keyframes = TransformKeyFrames(
+            translate_keys, rotate_keys, scale_keys)
+
+    def draw(self, projection, view, model, **param):
+        """ When redraw requested, interpolate our node transform from keys """
+        self.transform = self.keyframes.value(glfw.get_time())
+        super().draw(projection, view, model, **param)
+
 # -------------- Interpolator ----------------------------------------------
 
 class KeyFrames:
@@ -145,14 +192,19 @@ class KeyFrames:
         """ Computes interpolated value from keyframes, for a given time """
 
         # 1. ensure time is within bounds else return boundary keyframe
-        if(time < self.times[0] or self.times[-1] < time):
+        if(time < self.times[0]):
+            return self.values[0]
+        if(time > self.times[-1]):
             return self.values[-1]
         
         # 2. search for closest index entry in self.times, using bisect_left function
         closest_index = bisect_left(self.times, time)
+
         # 3. using the retrieved index, interpolate between the two neighboring values
         # in self.values, using the initially stored self.interpolate function
-        return self.interpolate(self.values[closest_index-1], self.values[closest_index], 0.5)
+
+        return self.interpolate(self.values[closest_index-1], self.values[closest_index], 
+                                (time-self.times[closest_index-1]) / (self.times[closest_index] - self.times[closest_index - 1]))
 
 # ------------ low level OpenGL object wrappers ----------------------------
 class Shader:
@@ -301,7 +353,8 @@ void main() {
     vec3 specular =  spec * Ks;
     specular = specular / pow( distance(fragPos, lightDir) ,2);
     
-    outColor = vec4(diffuse + specular + ambient, 1);
+    //outColor = vec4(diffuse + specular + ambient, 1);
+    outColor = vec4(normal,1);
 }"""
 
 
@@ -500,7 +553,7 @@ class Cylinder(Node):
 
     def __init__(self):
         super().__init__()
-        self.add(*load('cylinder.obj'))  # just load the cylinder from file
+        self.add(*load_textured('cylinder.obj'))  # just load the cylinder from file
 
 # ---------------- Shape constructors ----------------------------------------
 
@@ -603,30 +656,50 @@ def main():
     # place instances of our basic objects
     # viewer.add(*[mesh for file in sys.argv[1:] for mesh in load_textured(file)])
 
-    for file in sys.argv[1:]:
-        for mesh in load_textured(file):
-            # viewer.add(mesh)
-            node = Node(children=[mesh])
-            rotation_node = RotationControlNode(glfw.KEY_P, glfw.KEY_O, (0, 1, 0), 
-                                                children=[node], transform=rotate((0, 0, 1), 0))
-            viewer.add(rotation_node)
+    # for file in sys.argv[1:]:
+    #     for mesh in load_textured(file):
+    #         # viewer.add(mesh)
+    #         node = Node(children=[mesh])
+    #         rotation_node = RotationControlNode(glfw.KEY_P, glfw.KEY_O, (0, 1, 0), 
+    #                                             children=[node], transform=rotate((0, 0, 1), 0))
+    #         viewer.add(rotation_node)
 
-    if len(sys.argv) < 2:
-        print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
-              ' format supported by pyassimp.' % (sys.argv[0],))
+    # if len(sys.argv) < 2:
+    #     print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
+    #           ' format supported by pyassimp.' % (sys.argv[0],))
 
     # esfera = Node(children=[*load_textured("bunny/bunny.obj")])
     # node = RotationControlNode(glfw.KEY_P, glfw.KEY_O, (0,1,0), children=[esfera], transform=rotate((0,0,1),0))
     # viewer.add(node)
 
-
+    translate_keys = {0: vec(0, 0, 0), 2: vec(1, 1, 0), 4: vec(0, 0, 0)}
+    rotate_keys = {0: quaternion(), 2: quaternion_from_euler(180, 45, 90),
+                   3: quaternion_from_euler(180, 0, 180), 4: quaternion()}
+    scale_keys = {0: 1, 2: 0.5, 4: 1}
+    keynode = KeyFrameControlNode(translate_keys, rotate_keys, scale_keys)
+    keynode.add(Cylinder())
+    viewer.add(keynode)
     viewer.run()
 
     # my_keyframes = KeyFrames({0: 1, 3: 7, 6: 20})
-    # print(my_keyframes.value(1.5))
+    # print(my_keyframes.value(2.5))
 
     # vector_keyframes = KeyFrames({0: vec(1, 0, 0), 3: vec(0, 1, 0), 6: vec(0, 0, 1)})
     # print(vector_keyframes.value(1.5))   # should display numpy vector (0.5, 0.5, 0)
+
+    # mat0 = np.matrix([[1, 0, 0, 0],
+    #                   [0, 1, 0, 0],
+    #                   [0, 0, 1, 0],
+    #                   [0, 0, 0, 1]])
+
+    # mat1 = np.matrix([[1, 0, 0, 0],
+    #                   [0, 0, -1, 0],
+    #                   [0, 1, 0, 0],
+    #                   [0, 0, 0, 1]])
+
+    # matrix_keyframes = KeyFrames({0: mat0, 2: mat1})
+    # print(matrix_keyframes.value(1))
+
 
 if __name__ == '__main__':
     glfw.init()                # initialize window system glfw
