@@ -547,6 +547,8 @@ class Viewer:
                 glfw.set_window_should_close(self.win, True)
             if key == glfw.KEY_W:
                 GL.glPolygonMode(GL.GL_FRONT_AND_BACK, next(self.fill_modes))
+            if key == glfw.KEY_SPACE:
+                glfw.set_time(0)
 
 class Cylinder(Node):
     """ Very simple cylinder based on practical 2 load function """
@@ -680,26 +682,6 @@ def main():
     keynode.add(Cylinder())
     viewer.add(keynode)
     viewer.run()
-
-    # my_keyframes = KeyFrames({0: 1, 3: 7, 6: 20})
-    # print(my_keyframes.value(2.5))
-
-    # vector_keyframes = KeyFrames({0: vec(1, 0, 0), 3: vec(0, 1, 0), 6: vec(0, 0, 1)})
-    # print(vector_keyframes.value(1.5))   # should display numpy vector (0.5, 0.5, 0)
-
-    # mat0 = np.matrix([[1, 0, 0, 0],
-    #                   [0, 1, 0, 0],
-    #                   [0, 0, 1, 0],
-    #                   [0, 0, 0, 1]])
-
-    # mat1 = np.matrix([[1, 0, 0, 0],
-    #                   [0, 0, -1, 0],
-    #                   [0, 1, 0, 0],
-    #                   [0, 0, 0, 1]])
-
-    # matrix_keyframes = KeyFrames({0: mat0, 2: mat1})
-    # print(matrix_keyframes.value(1))
-
 
 if __name__ == '__main__':
     glfw.init()                # initialize window system glfw
