@@ -680,6 +680,7 @@ def main():
     scale_keys = {0: 1, 2: 0.5, 4: 1}
     keynode = KeyFrameControlNode(translate_keys, rotate_keys, scale_keys)
     keynode.add(Cylinder())
+    # keynode.add(*load_textured("bunny/bunny.obj"))
     viewer.add(keynode)
     viewer.run()
 
