@@ -9,6 +9,7 @@ import sys
 
 # External, non built-in modules
 import OpenGL.GL as GL              # standard Python OpenGL wrapper
+import OpenGL.GLU as GLU
 import glfw                         # lean window system wrapper for OpenGL
 import numpy as np                  # all matrix manipulations & OpenGL args
 import pyassimp                     # 3D resource loader
@@ -140,22 +141,32 @@ class Node:
             if child.__class__ == Node or child.__class__ == RotationControlNode:
                 child.debug_children(tab+2)
 
+    def set_z(self):
+        for children in self.children:
+            children.set_z()
+
 class RotationControlNode(Node):
     def __init__(self, key_up, key_down, axis, angle=0, **param):
         super().__init__(**param)   # forward base constructor named arguments
         self.angle, self.axis = angle, axis
         self.key_up, self.key_down = key_up, key_down
         self.transform_backup = self.transform
+        self.z = 0
 
     def draw(self, projection, view, model, win=None, **param):
         assert win is not None
         self.angle += 0.1 * int(glfw.get_key(win, self.key_up) == glfw.PRESS)
         self.angle -= 0.1 * int(glfw.get_key(win, self.key_down) == glfw.PRESS)
-        self.transform = rotate(
-            axis=self.axis, angle=self.angle) @ self.transform_backup
+
+        # self.transform = rotate(
+        #     axis=self.axis, angle=self.angle) @ self.transform_backup
+        self.transform = translate(x=0.0, y=0.0, z=self.z) @ self.transform_backup
 
         # call Node's draw method to pursue the hierarchical tree calling
         super().draw(projection, view, model, win=win, **param)
+
+    def set_z(self):
+        self.z -= 0.1
 
     def debug_children(self, tab):
         print(tab*' ' + self.name)
@@ -549,6 +560,13 @@ class Viewer:
                 GL.glPolygonMode(GL.GL_FRONT_AND_BACK, next(self.fill_modes))
             if key == glfw.KEY_SPACE:
                 glfw.set_time(0)
+            if key == glfw.KEY_UP:
+                print("up")
+                print(self.trackball.pos2d)
+                print(self.trackball.distance)
+                print(self.trackball.view_matrix())
+                self.drawables[0].set_z()
+                self.trackball.zoom(0.1, glfw.get_window_size(_win)[1])
 
 class Cylinder(Node):
     """ Very simple cylinder based on practical 2 load function """
@@ -657,32 +675,43 @@ def main():
 
     # place instances of our basic objects
     # viewer.add(*[mesh for file in sys.argv[1:] for mesh in load_textured(file)])
-
-    # for file in sys.argv[1:]:
-    #     for mesh in load_textured(file):
-    #         # viewer.add(mesh)
-    #         node = Node(children=[mesh])
-    #         rotation_node = RotationControlNode(glfw.KEY_P, glfw.KEY_O, (0, 1, 0), 
-    #                                             children=[node], transform=rotate((0, 0, 1), 0))
-    #         viewer.add(rotation_node)
+    # viewer.add(robot_arm())
+    for file in sys.argv[1:]:
+        for mesh in load_textured(file):
+            # viewer.add(mesh)
+            node = Node(children=[mesh])
+            rotation_node = RotationControlNode(glfw.KEY_P, glfw.KEY_O, (0, 1, 0), 
+                                                children=[node], transform=rotate((0, 0, 1), 0))
+            viewer.add(rotation_node)
 
     # if len(sys.argv) < 2:
     #     print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
     #           ' format supported by pyassimp.' % (sys.argv[0],))
 
-    # esfera = Node(children=[*load_textured("bunny/bunny.obj")])
+    # esfera = Node(children=[*load_textured("cube/cube.obj")])
     # node = RotationControlNode(glfw.KEY_P, glfw.KEY_O, (0,1,0), children=[esfera], transform=rotate((0,0,1),0))
     # viewer.add(node)
 
-    translate_keys = {0: vec(0, 0, 0), 2: vec(1, 1, 0), 4: vec(0, 0, 0)}
-    rotate_keys = {0: quaternion(), 2: quaternion_from_euler(180, 45, 90),
-                   3: quaternion_from_euler(180, 0, 180), 4: quaternion()}
-    scale_keys = {0: 1, 2: 0.5, 4: 1}
-    keynode = KeyFrameControlNode(translate_keys, rotate_keys, scale_keys)
-    keynode.add(Cylinder())
-    # keynode.add(*load_textured("bunny/bunny.obj"))
-    viewer.add(keynode)
+    # translate_keys = {0: vec(0, 0, 0), 2: vec(1, 1, 0), 4: vec(0, 0, 0)}
+    # rotate_keys = {0: quaternion(), 2: quaternion_from_euler(180, 45, 90),
+    #                3: quaternion_from_euler(180, 0, 180), 4: quaternion()}
+    # # scale_keys = {0: 1, 2: 0.5, 4: 1}
+    # scale_keys = {0:1}
+    # keynode = KeyFrameControlNode(translate_keys, rotate_keys, scale_keys)
+    # keynode.add(Cylinder())
+    # # keynode.add(*load_textured("bunny/bunny.obj"))
+    # viewer.add(keynode)
+    # viewer.run()
+
+    # translate_keys = {0: vec(0, 0, 0), 2: vec(0, 0, -1)}
+    # rotate_keys = {0: quaternion()}
+    # scale_keys = {0: 1}
+    # keynode = KeyFrameControlNode(translate_keys, rotate_keys, scale_keys)
+    # keynode.add(Cylinder())
+    # # keynode.add(*load_textured("bunny/bunny.obj"))
+    # viewer.add(keynode)
     viewer.run()
+
 
 if __name__ == '__main__':
     glfw.init()                # initialize window system glfw

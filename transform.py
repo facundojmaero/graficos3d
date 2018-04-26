@@ -190,7 +190,8 @@ class Trackball:
 
     def zoom(self, delta, size):
         """ Zoom trackball by a factor delta normalized by window size """
-        self.distance = max(0.001, self.distance * (1 - 50*delta/size))
+        # self.distance = max(0.001, self.distance * (1 - 50*delta/size))
+        self.distance = max(0.001, self.distance - delta)
 
     def pan(self, old, new):
         """ Pan in camera's reference by a 2d vector factor of (new - old) """

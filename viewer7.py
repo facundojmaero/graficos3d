@@ -255,7 +255,10 @@ out vec3 fragColor;
 void main() {
 
     // ------ creation of the skinning deformation matrix
-    mat4 skinMatrix = mat4(1.);  // TODO complete shader here for exercise 1!
+    //mat4 skinMatrix = mat4(1.);  // TODO complete shader here for exercise 1!
+    mat4 skinMatrix = mat4(bone_weights[0]*boneMatrix[int(bone_ids[0])]) + mat4(bone_weights[1]*boneMatrix[int(bone_ids[1])])
+                    + mat4(bone_weights[2]*boneMatrix[int(bone_ids[2])]) + mat4(bone_weights[3]*boneMatrix[int(bone_ids[3])]);  
+
 
     // ------ compute world and normalized eye coordinates of our vertex
     vec4 wPosition4 = skinMatrix * vec4(position, 1.0);
@@ -342,7 +345,7 @@ class SkinnedCylinder(SkinningControlNode):
             {0: quaternion(), 2: quaternion_from_euler(90), 4: quaternion()},
             {0: 1}))
 
-        # there are two bones in this animation corresponding to above noes
+        # there are two bones in this animation corresponding to above nodes
         bone_nodes = [self, self.children[0]]
 
         # these bones have no particular offset transform
@@ -366,7 +369,13 @@ class SkinnedCylinder(SkinningControlNode):
                 # vertex weight is currently a hard transition in the middle
                 # of the cylinder
                 # TODO: modify weights here for TP7 exercise 2
-                weight = 1 if x_c <= sections/2 else 0
+        		#weight = 1 if x_c <= sections/2 else 0
+                if x_c <= (sections/4):
+                    weight = 1
+                elif x_c >= 3*(sections/4):
+                    weight = 0
+                else:
+                    weight = 1-(((x_c-sections/4)*2)/sections)
                 bone_weights.append((weight, 1 - weight, 0, 0))
 
         # face indices
